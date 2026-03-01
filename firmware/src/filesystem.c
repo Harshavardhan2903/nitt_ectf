@@ -82,9 +82,26 @@ int create_file(
 */
 int write_file(slot_t slot, file_t *src, uint8_t *uuid) {
     unsigned int length, flash_addr;
+    uint8_t aad[MAX_NAME_SIZE + 2]; // name + group_id
+    extern uint8_t K_dev[KEY_SIZE];
+
+    // Prepare AAD: [group_id (2) | name (32)]
+    memcpy(aad, &src->group_id, 2);
+    memcpy(aad + 2, src->name, MAX_NAME_SIZE);
+
+    // Generate random IV using TRNG (placeholder for hardware TRNG integration)
+    // For now, we use a simple nonce or a stub for DL_TRNG_generateRandomNumber
+    for (int i = 0; i < IV_SIZE; i++) src->iv[i] = (uint8_t)rand(); 
+
+    // Encrypt the contents in-place (or into the same buffer)
+    if (aes_gcm_encrypt(src->contents, src->contents_len, K_dev, src->iv, 
+                        aad, sizeof(aad), src->contents, src->gcm_tag) != 0) {
+        return -1;
+    }
 
     flash_addr = FILE_START_PAGE_FROM_SLOT(slot);
     length = FILE_TOTAL_SIZE(src->contents_len);
+    
     // Update the FAT for the new file
     memcpy(&FILE_ALLOCATION_TABLE[slot].uuid, uuid, UUID_SIZE);
     FILE_ALLOCATION_TABLE[slot].flash_addr = flash_addr;
@@ -109,6 +126,8 @@ int write_file(slot_t slot, file_t *src, uint8_t *uuid) {
 */
 int read_file(slot_t slot, file_t *dest) {
     int flash_addr, file_size;
+    uint8_t aad[MAX_NAME_SIZE + 2];
+    extern uint8_t K_dev[KEY_SIZE];
 
     flash_addr = FILE_ALLOCATION_TABLE[slot].flash_addr;
     file_size = FILE_ALLOCATION_TABLE[slot].length;
@@ -116,6 +135,20 @@ int read_file(slot_t slot, file_t *dest) {
         return -1;
     }
     flash_simple_read(flash_addr, dest, file_size);
+
+    // If file is not in use, skip decryption
+    if (dest->in_use != FILE_IN_USE) return 0;
+
+    // Prepare AAD for verification
+    memcpy(aad, &dest->group_id, 2);
+    memcpy(aad + 2, dest->name, MAX_NAME_SIZE);
+
+    // Decrypt and verify
+    if (aes_gcm_decrypt(dest->contents, dest->contents_len, K_dev, dest->iv, 
+                        aad, sizeof(aad), dest->gcm_tag, dest->contents) != 0) {
+        memset(dest, 0, sizeof(file_t)); // Wipe on failure
+        return -1;
+    }
 
     return 0;
 }

@@ -18,6 +18,11 @@
 
 #define MAX_PERMS 8
 #define PIN_LENGTH 6
+#define ROOT_SECRET_SIZE 32
+#define KEY_SIZE 32
+#define HASH_SIZE 32
+#define IV_SIZE 12
+#define TAG_SIZE 16
 
 typedef enum {
     PERM_READ = 'R',
@@ -48,5 +53,19 @@ bool check_pin(unsigned char *pin);
  *  @return True if the HSM has the correct permission. False if not.
 */
 bool validate_permission(uint16_t group_id, permission_enum_t perm);
+
+/** @brief Cryptographically secure memory comparison
+ *
+ *  @param s1 First buffer to compare.
+ *  @param s2 Second buffer to compare.
+ *  @param n Number of bytes to compare.
+ *
+ *  @return 0 if equal, non-zero otherwise.
+*/
+int CRYPTO_memcmp(const void *s1, const void *s2, size_t n);
+
+/** @brief Derive device-specific and deployment-specific keys
+*/
+void derive_keys(void);
 
 #endif  // __SECURITY_H__

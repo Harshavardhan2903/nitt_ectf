@@ -11,99 +11,51 @@
  * @copyright Copyright (c) 2026 The MITRE Corporation
  */
 
-#if CRYPTO_EXAMPLE
-
 #include "simple_crypto.h"
-#include "security.h"
 #include <stdint.h>
 #include <string.h>
+#include "wolfssl/wolfcrypt/aes.h"
+#include "wolfssl/wolfcrypt/sha256.h"
+#include "wolfssl/wolfcrypt/hmac.h"
 
-
-/******************************** FUNCTION PROTOTYPES ********************************/
-/** @brief Encrypts plaintext using a symmetric cipher
- *
- * @param plaintext A pointer to a buffer of length len containing the
- *          plaintext to encrypt
- * @param len The length of the plaintext to encrypt. Must be a multiple of
- *          BLOCK_SIZE (16 bytes)
- * @param key A pointer to a buffer of length KEY_SIZE (16 bytes) containing
- *          the key to use for encryption
- * @param ciphertext A pointer to a buffer of length len where the resulting
- *          ciphertext will be written to
- *
- * @return 0 on success, -1 on bad length, other non-zero for other error
+/** @brief Encrypts plaintext using AES-256-GCM
  */
-int encrypt_sym(uint8_t *plaintext, size_t len, uint8_t *key, uint8_t *ciphertext) {
-    Aes ctx; // Context for encryption
-    int result; // Library result
+int aes_gcm_encrypt(uint8_t *plaintext, size_t len, uint8_t *key, uint8_t *iv, 
+                    uint8_t *aad, size_t aad_len, uint8_t *ciphertext, uint8_t *tag) {
+    Aes ctx;
+    int ret;
 
-    // Ensure valid length
-    if (len <= 0 || len % BLOCK_SIZE)
-        return -1;
+    ret = wc_AesGcmSetKey(&ctx, key, 32);
+    if (ret != 0) return ret;
 
-    // Set the key for encryption
-    result = wc_AesSetKey(&ctx, key, 16, NULL, AES_ENCRYPTION);
-    if (result != 0)
-        return result; // Report error
-
-
-    // Encrypt each block
-    for (int i = 0; i < len; i += BLOCK_SIZE) {
-        result = wc_AesEncryptDirect(&ctx, ciphertext + i, plaintext + i);
-        if (result != 0)
-            return result; // Report error
-    }
-    return 0;
+    ret = wc_AesGcmEncrypt(&ctx, ciphertext, plaintext, len, iv, 12, tag, 16, aad, aad_len);
+    return ret;
 }
 
-/** @brief Decrypts ciphertext using a symmetric cipher
- *
- * @param ciphertext A pointer to a buffer of length len containing the
- *          ciphertext to decrypt
- * @param len The length of the ciphertext to decrypt. Must be a multiple of
- *          BLOCK_SIZE (16 bytes)
- * @param key A pointer to a buffer of length KEY_SIZE (16 bytes) containing
- *          the key to use for decryption
- * @param plaintext A pointer to a buffer of length len where the resulting
- *          plaintext will be written to
- *
- * @return 0 on success, -1 on bad length, other non-zero for other error
+/** @brief Decrypts ciphertext using AES-256-GCM
  */
-int decrypt_sym(uint8_t *ciphertext, size_t len, uint8_t *key, uint8_t *plaintext) {
-    Aes ctx; // Context for decryption
-    int result; // Library result
+int aes_gcm_decrypt(uint8_t *ciphertext, size_t len, uint8_t *key, uint8_t *iv, 
+                    uint8_t *aad, size_t aad_len, uint8_t *tag, uint8_t *plaintext) {
+    Aes ctx;
+    int ret;
 
-    // Ensure valid length
-    if (len <= 0 || len % BLOCK_SIZE)
-        return -1;
+    ret = wc_AesGcmSetKey(&ctx, key, 32);
+    if (ret != 0) return ret;
 
-    // Set the key for decryption
-    result = wc_AesSetKey(&ctx, key, 16, NULL, AES_DECRYPTION);
-    if (result != 0)
-        return result; // Report error
-
-    // Decrypt each block
-    for (int i = 0; i < len; i += BLOCK_SIZE) {
-        result = wc_AesDecryptDirect(&ctx, plaintext + i, ciphertext + i);
-        if (result != 0)
-            return result; // Report error
-    }
-    return 0;
+    ret = wc_AesGcmDecrypt(&ctx, plaintext, ciphertext, len, iv, 12, tag, 16, aad, aad_len);
+    return ret;
 }
 
-/** @brief Hashes arbitrary-length data
- *
- * @param data A pointer to a buffer of length len containing the data
- *          to be hashed
- * @param len The length of the plaintext to hash
- * @param hash_out A pointer to a buffer of length HASH_SIZE (16 bytes) where the resulting
- *          hash output will be written to
- *
- * @return 0 on success, non-zero for other error
+/** @brief Hashes data using SHA-256
  */
 int hash(void *data, size_t len, uint8_t *hash_out) {
-    // Pass values to hash
-    return wc_Md5Hash((uint8_t *)data, len, hash_out);
+    return wc_Sha256Hash((uint8_t *)data, len, hash_out);
 }
 
-#endif
+/** @brief Derives keys using HKDF-SHA256
+ */
+int hkdf_sha256(uint8_t *salt, size_t salt_len, const uint8_t *ikm, size_t ikm_len, 
+                 uint8_t *okm, size_t okm_len) {
+    return wc_Tls13HKDF_Extract_And_Expand(SHA256, ikm, ikm_len, salt, salt_len, 
+                                           (uint8_t *)"Fortress-M0", 11, okm, okm_len);
+}
